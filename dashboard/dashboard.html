@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcoSort Dashboard</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    /* ===== RESET & BASE ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg-main:      #0f172a;
+      --bg-card:      #1e293b;
+      --bg-card2:     #0f172a;
+      --border:       #334155;
+      --text-main:    #f1f5f9;
+      --text-muted:   #94a3b8;
+      --green:        #22c55e;
+      --green-dim:    #16a34a33;
+      --blue:         #3b82f6;
+      --blue-dim:     #1d4ed833;
+      --yellow:       #f59e0b;
+      --red:          #ef4444;
+      --accent:       #6366f1;
+    }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    /* ===== HEADER ===== */
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    header h1 span { color: var(--green); }
+    header p { color: var(--text-muted); font-size: 0.9rem; margin-top: 4px; }
+
+    /* ===== STATUS BAR ===== */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 20px;
+      margin-bottom: 24px;
+      font-size: 0.9rem;
+    }
+    #status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.4s;
+    }
+    #status-dot.connected { background: var(--green); animation: pulse 1.5s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    /* ===== GRID ===== */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    /* ===== CARD ===== */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+    }
+    .card-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+    .card-value {
+      font-size: 2.4rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .card-unit { font-size: 1rem; color: var(--text-muted); margin-left: 4px; }
+
+    /* ===== JENIS SAMPAH ===== */
+    #card-jenis {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 24px;
+      border-width: 2px;
+      transition: border-color 0.4s, background 0.4s;
+    }
+    #card-jenis.organik {
+      border-color: var(--green);
+      background: var(--green-dim);
+    }
+    #card-jenis.anorganik {
+      border-color: var(--blue);
+      background: var(--blue-dim);
+    }
+    #jenis-label {
+      font-size: 2rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      transition: color 0.4s;
+    }
+    #jenis-label.organik   { color: var(--green); }
+    #jenis-label.anorganik { color: var(--blue); }
+    #jenis-icon { font-size: 3rem; margin-bottom: 8px; display: block; }
+
+    /* ===== SERVO INDICATOR ===== */
+    .servo-wrapper {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 6px;
+    }
+    .servo-track {
+      flex: 1;
+      height: 10px;
+      background: var(--border);
+      border-radius: 99px;
+      position: relative;
+    }
+    .servo-thumb {
+      width: 18px; height: 18px;
+      background: var(--accent);
+      border-radius: 50%;
+      position: absolute;
+      top: 50%; transform: translateY(-50%);
+      left: 50%;
+      transition: left 0.6s ease;
+      box-shadow: 0 0 8px var(--accent);
+    }
+    .servo-thumb.organik   { left: 5%;  background: var(--green); box-shadow: 0 0 8px var(--green); }
+    .servo-thumb.anorganik { left: 90%; background: var(--blue);  box-shadow: 0 0 8px var(--blue); }
+    .servo-thumb.standby   { left: 48%; }
+    .servo-side { font-size: 0.75rem; color: var(--text-muted); white-space: nowrap; }
+
+    /* ===== COUNTER ===== */
+    .counter-row {
+      display: flex;
+      gap: 12px;
+    }
+    .counter-box {
+      flex: 1;
+      background: var(--bg-card2);
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+    .counter-box .num { font-size: 1.8rem; font-weight: 700; }
+    .counter-box .lbl { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+    .counter-box.org  .num { color: var(--green); }
+    .counter-box.anorg .num { color: var(--blue); }
+
+    /* ===== LOG ===== */
+    #log-list {
+      list-style: none;
+      max-height: 220px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    #log-list::-webkit-scrollbar { width: 4px; }
+    #log-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    .log-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--bg-card2);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.82rem;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } }
+    .log-item .log-time { color: var(--text-muted); white-space: nowrap; font-size: 0.75rem; }
+    .log-item .log-badge {
+      padding: 2px 8px;
+      border-radius: 99px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .log-badge.organik   { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+    .log-badge.anorganik { background: var(--blue-dim);  color: var(--blue);  border: 1px solid var(--blue); }
+
+    /* ===== FOOTER ===== */
+    footer {
+      text-align: center;
+      margin-top: 28px;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🗑️ Eco<span>Sort</span> Dashboard</h1>
+  <p>Smart Trash Sorting Bin — IoT Robotik | MQTT Real-time</p>
+</header>
+
+<!-- Status Bar -->
+<div id="status-bar">
+  <div id="status-dot"></div>
+  <span id="status-text">Menghubungkan ke broker MQTT...</span>
+</div>
+
+<!-- Jenis Sampah (Full Width) -->
+<div class="grid">
+  <div class="card" id="card-jenis">
+    <div class="card-label">Jenis Sampah Terdeteksi</div>
+    <span id="jenis-icon">⏳</span>
+    <div id="jenis-label">MENUNGGU...</div>
+  </div>
+</div>
+
+<!-- Sensor Cards -->
+<div class="grid">
+  <div class="card">
+    <div class="card-label">📏 Jarak Ultrasonik</div>
+    <div class="card-value" id="distance">—<span class="card-unit">cm</span></div>
+  </div>
+  <div class="card">
+    <div class="card-label">💧 Kelembaban Sampah</div>
+    <div class="card-value" id="humidity">—<span class="card-unit">%</span></div>
+  </div>
+</div>
+
+<!-- Servo + Counter -->
+<div class="grid">
+  <div class="card">
+    <div class="card-label">⚙️ Posisi Servo</div>
+    <div class="servo-wrapper">
+      <span class="servo-side">🌿 Organik</span>
+      <div class="servo-track">
+        <div class="servo-thumb standby" id="servo-thumb"></div>
+      </div>
+      <span class="servo-side">🔵 Anorganik</span>
+    </div>
+    <p style="text-align:center;color:var(--text-muted);font-size:0.8rem;margin-top:10px;" id="servo-text">Standby (90°)</p>
+  </div>
+
+  <div class="card">
+    <div class="card-label">📊 Total Sampah Terpilah</div>
+    <div class="counter-row">
+      <div class="counter-box org">
+        <div class="num" id="count-org">0</div>
+        <div class="lbl">🌿 Organik</div>
+      </div>
+      <div class="counter-box anorg">
+        <div class="num" id="count-anorg">0</div>
+        <div class="lbl">🔵 Anorganik</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Log -->
+<div class="card">
+  <div class="card-label">📋 Log Aktivitas</div>
+  <ul id="log-list">
+    <li class="log-item"><span class="log-time">--:--:--</span><span style="color:var(--text-muted)">Menunggu data dari EcoSort...</span></li>
+  </ul>
+</div>
+
+<footer>
+  <p>EcoSort v1.0 | Broker: broker.hivemq.com | Topics: ecosort/#</p>
+  <p style="margin-top:4px;">Proyek UAS IoT Robotik</p>
+</footer>
+
+<script>
+  // ===== KONFIGURASI MQTT =====
+  const BROKER = "wss://broker.hivemq.com:8884/mqtt";
+  const CLIENT_ID = "EcoSortDashboard-" + Math.random().toString(16).slice(2, 8);
+
+  // ===== STATE =====
+  let countOrg   = 0;
+  let countAnorg = 0;
+
+  // ===== ELEMEN DOM =====
+  const elDot      = document.getElementById("status-dot");
+  const elStatus   = document.getElementById("status-text");
+  const elDist     = document.getElementById("distance");
+  const elHumidity = document.getElementById("humidity");
+  const elJenis    = document.getElementById("jenis-label");
+  const elJenisIcon= document.getElementById("jenis-icon");
+  const elCardJenis= document.getElementById("card-jenis");
+  const elServoThumb = document.getElementById("servo-thumb");
+  const elServoText  = document.getElementById("servo-text");
+  const elCountOrg   = document.getElementById("count-org");
+  const elCountAnorg = document.getElementById("count-anorg");
+  const elLog        = document.getElementById("log-list");
+
+  // ===== FUNGSI UTILITAS =====
+  function timeNow() {
+    return new Date().toLocaleTimeString("id-ID", { hour12: false });
+  }
+
+  function addLog(jenis, humidity, distance) {
+    // Hapus placeholder jika ada
+    const placeholder = elLog.querySelector("li:only-child");
+    if (placeholder && placeholder.querySelector("span[style]")) elLog.innerHTML = "";
+
+    const li = document.createElement("li");
+    li.className = "log-item";
+    li.innerHTML = `
+      <span class="log-time">${timeNow()}</span>
+      <span class="log-badge ${jenis}">${jenis.toUpperCase()}</span>
+      <span>💧 ${humidity}% | 📏 ${distance} cm</span>
+    `;
+    elLog.prepend(li);
+
+    // Batasi 30 item
+    if (elLog.children.length > 30) elLog.removeChild(elLog.lastChild);
+  }
+
+  function updateServo(posisi, derajat) {
+    elServoThumb.className = "servo-thumb " + posisi;
+    const labels = { organik: "⬅️ Kiri — Organik (170°)", anorganik: "➡️ Kanan — Anorganik (10°)", standby: "⏸️ Tengah — Standby (90°)" };
+    elServoText.textContent = labels[posisi] || "Standby";
+  }
+
+  function updateJenis(jenis) {
+    const icons = { organik: "🌿", anorganik: "🔵" };
+    elJenis.textContent = jenis.toUpperCase();
+    elJenis.className   = jenis;
+    elJenisIcon.textContent = icons[jenis] || "⏳";
+    elCardJenis.className = "card " + jenis;
+  }
+
+  // ===== KONEKSI MQTT =====
+  const client = mqtt.connect(BROKER, { clientId: CLIENT_ID, clean: true, reconnectPeriod: 3000 });
+
+  client.on("connect", () => {
+    elDot.classList.add("connected");
+    elStatus.textContent = "✅ Terhubung ke broker.hivemq.com";
+
+    client.subscribe("ecosort/sensor");
+    client.subscribe("ecosort/servo");
+    client.subscribe("ecosort/status");
+  });
+
+  client.on("offline", () => {
+    elDot.classList.remove("connected");
+    elStatus.textContent = "⚠️ Terputus — mencoba kembali...";
+  });
+
+  client.on("error", (err) => {
+    elDot.classList.remove("connected");
+    elStatus.textContent = "❌ Error: " + err.message;
+  });
+
+  // ===== HANDLER PESAN MQTT =====
+  client.on("message", (topic, message) => {
+    let payload;
+    try { payload = JSON.parse(message.toString()); } catch { return; }
+
+    if (topic === "ecosort/sensor") {
+      const { distance, humidity, jenis } = payload;
+
+      // Update angka sensor
+      elDist.innerHTML     = `${distance}<span class="card-unit">cm</span>`;
+      elHumidity.innerHTML = `${humidity}<span class="card-unit">%</span>`;
+
+      // Update jenis
+      updateJenis(jenis);
+
+      // Update counter
+      if (jenis === "organik")   { countOrg++;   elCountOrg.textContent   = countOrg; }
+      if (jenis === "anorganik") { countAnorg++;  elCountAnorg.textContent = countAnorg; }
+
+      // Log
+      addLog(jenis, humidity, distance);
+    }
+
+    if (topic === "ecosort/servo") {
+      const { posisi, derajat } = payload;
+      updateServo(posisi, derajat);
+    }
+  });
+</script>
+</body>
+</html>
