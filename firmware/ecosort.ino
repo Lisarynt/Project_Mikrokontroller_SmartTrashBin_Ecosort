@@ -92,3 +92,69 @@ void reconnect_mqtt() {
     }
   }
 }
+
+// ============================================================
+//  FEATURE: SENSOR — HC-SR04 & Soil Moisture
+// ============================================================
+long getDistance() {
+  long total = 0;
+  int  valid = 0;
+
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(PIN_TRIG, LOW);
+    delayMicroseconds(2);
+    digitalWrite(PIN_TRIG, HIGH);
+    delayMicroseconds(10);
+    digitalWrite(PIN_TRIG, LOW);
+
+    long pulse = pulseIn(PIN_ECHO, HIGH, 30000);
+    long dist  = pulse * 0.034 / 2;
+
+    if (dist > 0 && dist < 400) {
+      total += dist;
+      valid++;
+    }
+    delay(10);
+  }
+
+  if (valid == 0) return 999;
+  return total / valid;
+}
+
+int getSoilHumidity() {
+  long total = 0;
+
+  for (int i = 0; i < 5; i++) {
+    int raw = analogRead(PIN_SOIL);
+    raw   = constrain(raw, 1500, 4095);
+    total += map(raw, 1500, 4095, 100, 0);
+    delay(50);
+  }
+
+  return (int)(total / 5);
+}
+
+// ============================================================
+//  SETUP
+// ============================================================
+void setup() {
+  Serial.begin(115200);
+  delay(100);
+
+  Serial.println("=================================");
+  Serial.println("  EcoSort Smart Bin — Booting");
+  Serial.println("=================================");
+
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+
+  servo1.attach(PIN_SERVO);
+  servo1.write(SERVO_TENGAH);
+  delay(500);
+
+  setup_wifi();
+  mqtt.setServer(MQTT_SERVER, MQTT_PORT);
+  mqtt.setKeepAlive(30);
+
+  Serial.println("[System] EcoSort siap!\n");
+}
