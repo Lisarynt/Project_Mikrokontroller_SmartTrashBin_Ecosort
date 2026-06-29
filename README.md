@@ -1,6 +1,6 @@
 # EcoSort - Smart Trash Sorting Bin
 
-Proyek mikrokontroler berbasis ESP32 yang mendeteksi dan memilah sampah secara otomatis menggunakan sensor ultrasonik dan sensor kelembaban, lalu menampilkan data secara real-time melalui dashboard web berbasis MQTT.
+Proyek IoT Robotik berbasis ESP32 yang mendeteksi dan memilah sampah secara otomatis menggunakan sensor ultrasonik dan sensor kelembaban. Aktuator servo motor menggerakkan sekat pemilah secara fisik sebagai elemen robotik, sementara data dikirim dan ditampilkan secara real-time melalui dashboard web berbasis MQTT.
 
 **Anggota Kelompok 1:**
 - Lisa Ayu Aryanti - 23552011432
@@ -33,7 +33,7 @@ project_Mikrokontroller_kelompok1/
 |---|---|---|
 | Sensor Ultrasonik HC-SR04 | TRIG: GPIO5, ECHO: GPIO18 | Mendeteksi keberadaan sampah (threshold < 15 cm) |
 | Sensor Soil Moisture | GPIO34 (ADC) | Mengukur kelembaban untuk membedakan organik/anorganik |
-| Servo Motor | GPIO13 | Memilah sampah ke kompartemen organik atau anorganik |
+| Servo Motor SG90 | GPIO13 | Aktuator robotik: menggerakkan sekat pemilah sampah secara fisik (10° / 90° / 170°) |
 | ESP32 | - | Mikrokontroler utama, WiFi, dan komunikasi MQTT |
 
 ### Software / Library
@@ -44,6 +44,61 @@ project_Mikrokontroller_kelompok1/
 | `PubSubClient` | Komunikasi MQTT antara ESP32 dan dashboard |
 | `ESP32Servo` | Kontrol servo motor via ESP32 |
 | MQTT.js (CDN) | Koneksi MQTT WebSocket di sisi dashboard |
+
+### Fitur Robotik
+
+Servo motor berfungsi sebagai aktuator mekanik yang menjadi elemen robotik utama dalam sistem ini. Gerakan servo dikendalikan penuh oleh ESP32 berdasarkan hasil klasifikasi sensor:
+
+| Kondisi | Posisi Servo | Sudut | Arah Fisik |
+|---|---|---|---|
+| Standby / tidak ada sampah | Tengah | 90° | Netral |
+| Sampah organik terdeteksi | Kiri | 170° | Kompartemen organik |
+| Sampah anorganik terdeteksi | Kanan | 10° | Kompartemen anorganik |
+
+Servo menahan posisi selama 3 detik (SERVO_HOLD_MS) untuk memastikan sampah jatuh ke kompartemen yang tepat, kemudian kembali ke posisi tengah secara otomatis.
+
+### Fitur Keamanan Dashboard
+
+Dashboard versi 1.1 mengimplementasikan dua lapisan keamanan aktif pada data yang masuk, ditambah beberapa mekanisme ketahanan koneksi:
+
+**Security Layer 1 — Validasi Tipe Data**
+
+Setiap nilai `distance` dan `humidity` yang diterima dari MQTT dikonversi paksa ke tipe `Number` dan diperiksa dengan `isNaN()`. Jika nilainya bukan angka (misalnya akibat data korup atau percobaan injeksi), payload langsung ditolak dan dicatat sebagai peringatan di console:
+
+```javascript
+distance = Number(distance);
+humidity = Number(humidity);
+
+if (isNaN(distance) || isNaN(humidity)) {
+  console.warn("Security Alert: Data sensor tidak valid atau terindikasi tampering!");
+  return;
+}
+```
+
+**Security Layer 2 — Sanitasi String (XSS Prevention)**
+
+Nilai `jenis` yang berupa string dilewatkan melalui fungsi `escapeHTML()` sebelum dirender ke DOM. Fungsi ini mengubah karakter berbahaya seperti `<`, `>`, `"`, `'`, dan `&` menjadi entitas HTML yang aman, sehingga mencegah serangan Cross-Site Scripting (XSS) jika ada pihak lain yang mengirim payload berbahaya ke topik MQTT yang sama:
+
+```javascript
+function escapeHTML(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+```
+
+**Mekanisme Ketahanan Koneksi**
+
+| Fitur | Implementasi |
+|---|---|
+| Koneksi terenkripsi | WebSocket Secure (WSS) pada port 8884, data antara browser dan broker terenkripsi TLS |
+| Client ID acak | Setiap sesi menghasilkan ID unik (`EcoSortDashboard-` + random hex) untuk mencegah konflik sesi |
+| Auto-reconnect | `reconnectPeriod: 3000` — dashboard otomatis mencoba kembali terhubung setiap 3 detik |
+| Error handling JSON | Pesan MQTT dibungkus `try/catch` saat di-parse; payload rusak dibuang tanpa menghentikan aplikasi |
+| Pembatasan log | Log aktivitas dibatasi maksimal 30 entri untuk mencegah akumulasi data berlebih di memori browser |
 
 ### Konfigurasi MQTT
 
