@@ -276,3 +276,7 @@ Letakkan benda di depan sensor ultrasonik pada jarak kurang dari 15 cm. Sistem a
 - Amati dashboard untuk memverifikasi data yang diterima sesuai dengan kondisi fisik.
 - Uji dengan benda basah (kelembaban tinggi) dan benda kering (kelembaban rendah) untuk memverifikasi akurasi klasifikasi.
 - Sesuaikan nilai `HUMIDITY_THRESH` (default: 30) di firmware jika diperlukan kalibrasi.
+
+![Demo Aplikasi](ezgif-5ceda71d58aef273.gif)
+
+
